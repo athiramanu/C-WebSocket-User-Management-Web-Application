@@ -1,16 +1,17 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 #include <websocketpp/common/thread.hpp>
+#include <mysql/mysql.h>
+
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+
 #include <iostream>
 #include <set>
 #include <string>
 #include <random>
-
-
-
+#include <tuple>
 
 typedef websocketpp::server<websocketpp::config::asio> server;
 
@@ -48,6 +49,7 @@ struct action {
     websocketpp::connection_hdl hdl;
     server::message_ptr msg;
 };
+
 
 class broadcast_server {
 public:
@@ -134,7 +136,6 @@ public:
                         char_response_json[i] = response_json[i]; 
                     } 
                     Document parsed_response_json = parse_json(response_json.c_str());
-
                     std::string payload_response = compare_and_perform_action(parsed_response_json);
                     
                     a.msg->set_payload(payload_response);
@@ -171,7 +172,44 @@ public:
         return response_string;
     }
 
-    std::string log_in(std::string username,std::string password){
+    MYSQL* create_database_connection(){
+       /*
+       Function to create a mysql database connection 
+
+       return: connection instance
+       */
+       MYSQL *conn;
+       const char *server = "localhost";
+       const char *user = "root";
+       const char *password = "password";
+       const char *database = "demo";
+       conn = mysql_init(NULL);
+       conn = mysql_real_connect(conn, server, user, password, database, 0, NULL, 0);
+       return(conn);
+    }
+
+    MYSQL_RES* execute_query(MYSQL* conn, std::string query){
+        /*
+        Function to execute sql query and return result
+
+        param: database connection instance - conn
+        param: sql query - query
+
+        return: result after executing query
+        */
+        MYSQL_RES *res;
+        const char *q = query.c_str();
+        int state = mysql_query(conn, q);
+        res = mysql_use_result(conn);
+        if(state==0){
+          return(res);
+        }
+        else{
+          std::cout<<"ERROR:"<<mysql_error(conn)<<std::endl;
+        }
+    }    
+
+    std::string log_in(std::string username,std::string userpassword){
         /*
         Function to log in the user, validate if the user exists in the database, if so 
         generate a unique token else return an error as user not found
@@ -181,10 +219,25 @@ public:
         return: Response json in string.
         */
 
-        // verify record in database 
-        // TODO: Query in the database
-
         // create end point token and send it back
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string status = "False";
+        std::string query;
+
+        conn = create_database_connection();
+        query = "select * from user_account where username = '"+username+"' and password = '"+userpassword+"'";
+        res = execute_query(conn, query);
+        
+        if(!mysql_fetch_row(res)){
+            status = "False";
+        }
+        else{                                                                                               
+            status = "True";
+        }
+        mysql_close(conn);
+
         std::string token = generate_random_string();
         std::string message = std::string("Welcome to Oracle.");
         
@@ -194,7 +247,7 @@ public:
         response_array.push_back("message");
         response_array.push_back(message);
         response_array.push_back("status");
-        response_array.push_back("True");
+        response_array.push_back(status);
         response_array.push_back("action");
         response_array.push_back("log_in");
         
@@ -202,22 +255,166 @@ public:
         return response_string;
     }
 
-    std::string get_user_creation_pop_up_details(){
-        // Get the list of superviors
-        // TODO: Query to database and list the username along with id , remove dummy data below after
-        std::vector<std::tuple<std::string, int> > dummy_supervisor_user_list; 
-        dummy_supervisor_user_list.push_back(std::make_tuple("Arvind", 1)); 
-        dummy_supervisor_user_list.push_back(std::make_tuple("Arun", 2)); 
-        dummy_supervisor_user_list.push_back(std::make_tuple("Athira", 3)); 
+    std::string user_list_in_json_format(){
+        /*
+        Function to convert user id and username of all users
+        in json format
 
-        //Get the list of user_status 
-        // TODO: Query to database and list the user status along with id, remove dummy data below after   
-        std::vector<std::tuple<std::string, int> > dummy_user_status_list; 
-        dummy_user_status_list.push_back(std::make_tuple("active", 1)); 
-        dummy_user_status_list.push_back(std::make_tuple("inactive", 2)); 
+        returns string in the form :
+        
+        "supervisor_list":[
+            {"user_id":"12", "username":"user0"},
+            {"user_id":"1", "username":"user1"}
+        ]
+        */
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        MYSQL *conn = create_database_connection();
+        std::string query = "select user_id, username from user_account";
+        std::string response_string;
+        std::vector<std::tuple<std::string, std::string>> supervisor_user_list; 
+       
+        res = execute_query(conn, query);
+        while((row = mysql_fetch_row(res))!=NULL){
+            //vector of tuples of the form (user_id, username)
+            supervisor_user_list.push_back(std::make_tuple(row[0], row[1]));
+        }
 
-        return std::string("{\"action\":\"get_user_creation_pop_up_details\"}");
+        response_string += "\"supervisor_list\":[";
+        for(int i=0; i<supervisor_user_list.size(); i++){
+            response_string += "{\"user_id\":\""+std::get<0>(supervisor_user_list[i])+"\", \"username\":\""+std::get<1>(supervisor_user_list[i])+"\"}";
+            if(i+1 < supervisor_user_list.size()){
+                //add "," if there are more entries left
+                response_string += ",";
+            }
+        }
+        response_string += "]";
+        
+        return response_string;
     }
+
+    std::string skill_set_in_json_format(){
+        /*
+        Function to convert skill id and skill name to json format
+
+        returns string in the form :
+        
+        "user_skill_list":[
+            {"skill_id":"0", "skill_name":"skill0"},
+            {"skill_id":"1", "skill_name":"skill1"}
+        ]
+        */
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        MYSQL *conn = create_database_connection();
+        std::string query = "select skill_id, skill_name from work_skill";
+        std::string response_string;
+        std::vector<std::tuple<std::string, std::string>> user_skill_list; 
+        
+        res = execute_query(conn, query);     
+        while((row = mysql_fetch_row(res))!=NULL){
+            //vector of tuples of the form (user_id, username)
+            user_skill_list.push_back(std::make_tuple(row[0], row[1]));
+        }
+
+        response_string += "\"user_skill_list\":[";
+        for(int i=0; i<user_skill_list.size(); i++){
+            response_string += "{\"skill_id\":\""+std::get<0>(user_skill_list[i])+"\", \"skill_name\":\""+std::get<1>(user_skill_list[i])+"\"}";
+            if(i+1 < user_skill_list.size()){
+                //add "," if there are more entries left
+                response_string += ",";
+            }
+        }
+        response_string += "]";
+      
+        return response_string;       
+    }
+
+    std::string get_user_creation_pop_up_details(){
+        /*
+        Function to create string in json format with details to
+        be displayed in drop-down for supervisor and skills
+
+        returns string in the form:
+        {
+            "action":"get_user_creation_pop_up_details",
+            "supervisor_list":
+            [
+                {"user_id":"12", "username":"user0"},..
+            ],
+            "user_skill_list":
+            [
+                {"skill_id":"1", "skill_name":"skill1"},..
+            ]
+        }
+        */
+        std::string response_string;
+
+        response_string += "{\"action\":\"get_user_creation_pop_up_details\",";
+        response_string += user_list_in_json_format();
+        response_string += ",";
+        response_string += skill_set_in_json_format();
+        response_string += "}";
+        return response_string;
+    }
+
+    std::string create_user(std::string username, std::string firstname, std::string lastname, std::string userpassword, std::string supervisor_id, std::string user_start_date, std::string user_end_date, std::string user_status, std::string skill_id){
+        /*
+        Function to create a new user from values passed as 
+        parameters
+
+        return : json string with action and status
+
+        {"action":"user_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+        
+        conn = create_database_connection();     
+        std::string query = "insert into user_account(username, firstname, lastname, password, supervisor_id, user_start_date, user_end_date, user_status, skill_id) values ('"+username+"','"+firstname+"','"+lastname+"','"+userpassword+"','"+supervisor_id+"','"+user_start_date+"','"+user_end_date+"','"+user_status+"','"+skill_id+"')";
+        res = execute_query(conn, query);
+        if(res){
+            response = "{\"action\":\"user_create\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"user_create\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string create_role(std::string role_name, std::string role_description, std::string role_start_date, std::string role_end_date){
+        /*
+        Function to create a new ROLE from values passed as 
+        parameters
+
+        return : json string with action and status
+
+        {"action":"role_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "insert into roles(role_name, role_description, role_start_date, role_end_date) values ('"+role_name+"','"+role_description+"','"+role_start_date+"','"+role_end_date+"')";
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"user_create\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"user_create\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
 
     std::string compare_and_perform_action(const rapidjson::Document& parsed_response_json){
         /*
@@ -229,7 +426,7 @@ public:
         */
         std::string action = parsed_response_json["action"].GetString();
         std::string message = "";
-        std::cout<<"action"<<action;
+
         if(action == "log_in"){
             // Get username and get password 
             std::string username = std::string(parsed_response_json["username"].GetString());
@@ -242,17 +439,29 @@ public:
             std::string username = std::string(parsed_response_json["username"].GetString());
             std::string firstname = std::string(parsed_response_json["firstname"].GetString());
             std::string lastname = std::string(parsed_response_json["lastname"].GetString());
-            std::string is_supervisor = std::string(parsed_response_json["is_supervisor"].GetString());
+            std::string password = std::string(parsed_response_json["password"].GetString());
             std::string supervisor_id = std::string(parsed_response_json["supervisor_id"].GetString());
-            std::string user_status_id = std::string(parsed_response_json["user_status_id"].GetString());
+            std::string user_start_date = std::string(parsed_response_json["user_start_date"].GetString());
+            std::string user_end_date = std::string(parsed_response_json["user_end_date"].GetString());
+            std::string user_status = std::string(parsed_response_json["user_status"].GetString());
             std::string skill_id = std::string(parsed_response_json["skill_id"].GetString());
+            
+            message = create_user(username, firstname, lastname, password, supervisor_id, user_start_date, user_end_date, user_status, skill_id);
+        }
+        else if(action == "role_create"){
+            // Get the username, firstname, lastname, password, supervisor_id, user_status_id, skill_id
+            std::string role_name = std::string(parsed_response_json["role_name"].GetString());
+            std::string role_description = std::string(parsed_response_json["role_description"].GetString());
+            std::string role_start_date = std::string(parsed_response_json["role_start_date"].GetString());
+            std::string role_end_date = std::string(parsed_response_json["role_end_date"].GetString());
+            
+            message = create_role(role_name, role_description, role_start_date, role_end_date);
         }
         else if(action == "get_user_creation_pop_up_details"){
             // Call the function to get neccessary information to populate drop downs.
             message = get_user_creation_pop_up_details();
         }
         return message;
-
     }
 
 
