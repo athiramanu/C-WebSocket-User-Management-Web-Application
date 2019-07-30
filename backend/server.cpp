@@ -553,6 +553,105 @@ public:
         return response_string;
     }
 
+    std::string create_user_role(std::string role_id, std::string user_id, std::string user_role_start_date, std::string user_role_end_date){
+        /*
+        Function to create a new ROLE from values passed as 
+        parameters
+        return : json string with action and status
+        {"action":"role_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "insert into user_role(role_id, user_id, user_role_start_date, user_role_end_date) values ('"+role_id+"','"+user_id+"','"+user_role_start_date+"','"+user_role_end_date+"')";
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"user_role_create\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"user_role_create\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string edit_user_role(std::string user_role_id, std::string role_id, std::string user_id, std::string user_role_start_date, std::string user_role_end_date){
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "update user_role set role_id = \""+role_id+"\", user_id=\""+user_id+"\", user_role_start_date=\""+user_role_start_date+"\", user_role_end_date=\""+user_role_end_date+"\" where user_role_id="+user_role_id;
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"user_role_edit\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"user_role_edit\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string delete_user_role(std::string user_role_id){
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "delete from user_role where user_role_id="+user_role_id;
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"user_role_delete\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"user_role_delete\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string list_user_role(){
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        MYSQL *conn = create_database_connection();
+        std::string query = "select user_role_id, role_id, user_id, user_role_start_date, user_role_end_date from user_role";
+        std::string response_string="{\"action\":\"list_user_role\", \"user_roles\":[";
+        std::string user_role_id, role_id, user_id, user_role_start_date, user_role_end_date; 
+       
+        res = execute_query(conn, query);
+        row = mysql_fetch_row(res);
+        while(row !=NULL){
+            std::cout<<"\n\n\nhi\n\n\\n";
+            user_role_id = row[0];
+            role_id = row[1];
+            user_id = row[2];
+            user_role_start_date = row[3];
+            user_role_end_date = row[4];
+            response_string += "{\"user_role_id\":\""+user_role_id+
+			"\",\"role_id\":\""+role_id+
+			"\",\"user_id\":\""+user_id+
+			"\",\"user_role_start_date\":\""+user_role_start_date+
+            "\",\"user_role_end_date\":\""+user_role_end_date+"\"}";
+            if((row = mysql_fetch_row(res)) != NULL){
+                response_string += ", ";
+            }
+            
+        }
+        response_string += "]}";
+        
+        return response_string;
+    }
+
     std::string compare_and_perform_action(const rapidjson::Document& parsed_response_json){
         /*
         Function to compare the incoming action and perform this action along with 
@@ -562,7 +661,7 @@ public:
         */
         std::string action = parsed_response_json["action"].GetString();
         std::string message = "";
-        action = "role_list";
+        action = "user_role_list";
         if(action == "log_in"){
             // Get username and get password 
             std::string username = std::string(parsed_response_json["username"].GetString());
@@ -638,6 +737,36 @@ public:
 
         else if(action == "role_list"){
             message = list_role();
+        }
+
+        else if(action == "user_role_create"){
+            // Get the username, firstname, lastname, password, supervisor_id, user_status_id, skill_id
+            std::string role_id = std::string(parsed_response_json["role_id"].GetString());
+            std::string user_id = std::string(parsed_response_json["user_id"].GetString());
+            std::string user_role_start_date = std::string(parsed_response_json["user_role_start_date"].GetString());
+            std::string user_role_end_date = std::string(parsed_response_json["user_role_end_date"].GetString());
+
+            message = create_user_role(role_id, user_id, user_role_start_date, user_role_end_date);
+        }
+
+        else if(action == "user_role_edit"){
+            std::string user_role_id = std::string(parsed_response_json["user_role_id"].GetString());
+            std::string role_id = std::string(parsed_response_json["role_id"].GetString());
+            std::string user_id = std::string(parsed_response_json["user_id"].GetString());
+            std::string user_role_start_date = std::string(parsed_response_json["user_role_start_date"].GetString());
+            std::string user_role_end_date = std::string(parsed_response_json["user_role_end_date"].GetString());
+           
+            message = edit_user_role(user_role_id, role_id, user_id, user_role_start_date, user_role_end_date);
+        }
+   
+        else if(action == "user_role_delete"){
+            std::string user_role_id = std::string(parsed_response_json["user_role_id"].GetString());
+        
+            message = delete_user_role(user_role_id);
+        }
+
+        else if(action == "user_role_list"){
+            message = list_user_role();
         }
 
         else if(action == "get_user_creation_pop_up_details"){
