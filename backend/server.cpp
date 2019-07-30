@@ -631,7 +631,6 @@ public:
         res = execute_query(conn, query);
         row = mysql_fetch_row(res);
         while(row !=NULL){
-            std::cout<<"\n\n\nhi\n\n\\n";
             user_role_id = row[0];
             role_id = row[1];
             user_id = row[2];
@@ -652,6 +651,112 @@ public:
         return response_string;
     }
 
+    std::string create_skill(std::string skill_name){
+        /*
+        Function to create a new ROLE from values passed as 
+        parameters
+        return : json string with action and status
+        {"action":"role_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "insert into work_skill(skill_name) values ('"+skill_name+"')";
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"skill_create\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"skill_create\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string edit_skill(std::string skill_id, std::string skill_name){
+        /*
+        Function to create a new ROLE from values passed as 
+        parameters
+        return : json string with action and status
+        {"action":"role_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "update work_skill set skill_name = \""+skill_name+"\" where skill_id="+skill_id;
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"skill_edit\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"skill_edit\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string delete_skill(std::string skill_id){
+        /*
+        Function to create a new ROLE from values passed as 
+        parameters
+        return : json string with action and status
+        {"action":"role_create", "status":"True"}
+        
+        */
+        MYSQL *conn;
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        std::string response = "";
+
+        conn = create_database_connection(); 
+        std::string query = "delete from work_skill where skill_id="+skill_id;
+        res = execute_query(conn, query);
+        
+        if(res){
+            response = "{\"action\":\"skill_delete\", \"status\":\"False\"}";
+        }
+        else{                                                                                               
+            response = "{\"action\":\"skill_delete\", \"status\":\"True\"}";
+        }
+        mysql_close(conn);
+        return response;
+    }
+
+    std::string list_skill(){
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+        MYSQL *conn = create_database_connection();
+        std::string query = "select skill_id, skill_name from work_skill";
+        std::string response_string="{\"action\":\"skill_list\", \"skills\":[";
+        std::string skill_id, skill_name; 
+       
+        res = execute_query(conn, query);
+        row = mysql_fetch_row(res);
+        while(row !=NULL){
+            skill_id = row[0];
+            skill_name = row[1];
+            response_string += "{\"skill_id\":\""+skill_id+
+			"\",\"skill_name\":\""+skill_name+"\"}";
+            if((row = mysql_fetch_row(res)) != NULL){
+                response_string += ", ";
+            }
+            
+        }
+        response_string += "]}";
+        
+        return response_string;
+    }
+
     std::string compare_and_perform_action(const rapidjson::Document& parsed_response_json){
         /*
         Function to compare the incoming action and perform this action along with 
@@ -661,7 +766,7 @@ public:
         */
         std::string action = parsed_response_json["action"].GetString();
         std::string message = "";
-        action = "user_role_list";
+        
         if(action == "log_in"){
             // Get username and get password 
             std::string username = std::string(parsed_response_json["username"].GetString());
@@ -669,6 +774,7 @@ public:
 
             message = log_in(username,password);        
         }
+
         else if(action == "user_create"){
             // Get the username, firstname, lastname, password, supervisor_id, user_status_id, skill_id
             std::string username = std::string(parsed_response_json["username"].GetString());
@@ -767,6 +873,30 @@ public:
 
         else if(action == "user_role_list"){
             message = list_user_role();
+        }
+
+         else if(action == "skill_create"){
+            // Get the username, firstname, lastname, password, supervisor_id, user_status_id, skill_id
+            std::string skill_name = std::string(parsed_response_json["skill_name"].GetString());
+
+            message = create_skill(skill_name);
+        }
+
+        else if(action == "skill_edit"){
+            std::string skill_id = std::string(parsed_response_json["skill_id"].GetString());
+            std::string skill_name = std::string(parsed_response_json["skill_name"].GetString());
+           
+            message = edit_skill(skill_id, skill_name);
+        }
+   
+        else if(action == "skill_delete"){
+            std::string skill_id = std::string(parsed_response_json["skill_id"].GetString());
+        
+            message = delete_skill(skill_id);
+        }
+
+        else if(action == "skill_list"){
+            message = list_skill();
         }
 
         else if(action == "get_user_creation_pop_up_details"){
